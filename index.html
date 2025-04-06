@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Black Hole Simulation</title>
+    <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+    <canvas id="webgl"></canvas>
+    <script type="module" src="/main.js"></script>
+
+    <div id="ui" style="
+             position: absolute;
+             top: 20px;
+             left: 20px;
+             font-family: monospace;
+             background: rgba(0, 0, 0, 0.6);
+             color: white;
+             padding: 12px;
+             border-radius: 8px;
+             ">
+        <div>Distant Observer Time: <span id="observer-time">0.0</span> s</div>
+        <div>Object Time: <span id="object-time">0.0</span> s</div>
+    </div>
+</body>
+</html>
