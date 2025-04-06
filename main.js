@@ -143,7 +143,7 @@ const objectMesh = new THREE.Mesh(objectGeo, objectMat);
 scene.add(objectMesh);
 
 const objectBody = new CANNON.Body({
-    mass: 100,
+    mass: 10,
     shape: new CANNON.Sphere(2),
     position: new CANNON.Vec3(100, 0, 0), // Far away
     velocity: new CANNON.Vec3(5, 10, -5)    // Initial orbit-like speed
