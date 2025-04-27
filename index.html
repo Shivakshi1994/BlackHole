@@ -145,11 +145,6 @@
            • Lensing, time dilation, redshift, and spaghettification are simplified approximations. <br>
            • Accretion disk shader is artistic, not a physical fluid simulation. <br>
            • No relativistic effects (e.g., Doppler beaming) explicitly simulated on the disk.</p>
-
-        <div id="simDetails">
-             <strong>Project ID:</strong> BH_Sim_WebGL_v1.3<br> <strong>Researcher:</strong> [Your Name/Group Here]<br> <strong>Location:</strong> Bhopal, MP, India<br>
-             <strong>Date/Time:</strong> <span id="simDateTime"></span>
-        </div>
     </div>
 
     <script type="importmap">
@@ -299,15 +294,11 @@
         const diskTiltValueSpan = document.getElementById('diskTiltValue');
         const lensingToggle = document.getElementById('lensingToggle');
         const dropObjectButton = document.getElementById('dropObjectButton');
-        const simDateTimeSpan = document.getElementById('simDateTime');
 
         init();
         animate();
 
         function init() {
-            // Set current date and time
-            simDateTimeSpan.textContent = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
             camera.position.set(0, 25, 50);
