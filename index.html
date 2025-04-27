@@ -1,26 +1,685 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <title>Black Hole Simulation</title>
-    <link rel="stylesheet" href="./style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GR Accretion Disk & Lensing Simulation (WebGL Approximation)</title>
+    <style>
+        /* CSS Styles remain the same as the previous version */
+        body { margin: 0; overflow: hidden; background-color: #050510; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; }
+        canvas { display: block; }
+        #controls {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(10, 10, 30, 0.85); /* Darker, slightly blueish */
+            border: 1px solid #334;
+            padding: 15px;
+            border-radius: 6px;
+            width: 320px; /* Fixed width */
+            z-index: 10;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        #controls h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #9af;
+            font-size: 1.1em;
+            border-bottom: 1px solid #334;
+            padding-bottom: 5px;
+        }
+        #controls label {
+            display: block;
+            margin-bottom: 8px; /* Increased spacing */
+            font-size: 0.95em;
+            color: #ccc;
+        }
+         #controls input[type="range"], #controls input[type="checkbox"] {
+            width: 100%;
+            margin-bottom: 15px; /* Increased spacing */
+            cursor: pointer;
+         }
+         #controls input[type="checkbox"] {
+             width: auto;
+             margin-right: 8px;
+             vertical-align: middle;
+         }
+         #controls span {
+            font-weight: bold;
+            color: #fff; /* Brighter value */
+            float: right; /* Align value to the right */
+            background-color: rgba(0,0,0,0.3);
+            padding: 1px 4px;
+            border-radius: 3px;
+            min-width: 40px; /* Ensure space for value */
+            text-align: right;
+         }
+         #controls button {
+             padding: 10px 15px; /* Larger button */
+             margin-top: 15px;
+             cursor: pointer;
+             background-color: #446;
+             border: 1px solid #668;
+             color: #e0e0e0;
+             border-radius: 4px;
+             width: 100%; /* Full width */
+             font-size: 1em;
+             transition: background-color 0.2s ease;
+         }
+         #controls button:hover {
+             background-color: #557;
+         }
+         #info {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            width: 350px;
+            font-size: 0.85em;
+            color: #bbb;
+            background: rgba(10, 10, 30, 0.85);
+             border: 1px solid #334;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: left; /* Align text left */
+            z-index: 10;
+            line-height: 1.5;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+         }
+         #info h4 {
+             margin-top: 0;
+             margin-bottom: 8px;
+             color: #9cf;
+             font-size: 1em;
+             border-bottom: 1px solid #445;
+             padding-bottom: 4px;
+         }
+         #info p {
+             margin-bottom: 10px;
+         }
+         #info code {
+             background-color: rgba(0,0,0,0.3);
+             padding: 1px 3px;
+             border-radius: 2px;
+             font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+         }
+         #simDetails { font-size: 0.9em; color: #89a; margin-top: 15px; border-top: 1px dashed #445; padding-top: 10px; }
+         a { color: #8af; text-decoration: none; }
+         a:hover { text-decoration: underline; }
+    </style>
 </head>
 <body>
-    <canvas id="webgl"></canvas>
-    <script type="module" src="./main.js"></script>
+    <div id="controls">
+        <h3>Simulation Parameters</h3>
 
-    <div id="ui" style="
-             position: absolute;
-             top: 20px;
-             left: 20px;
-             font-family: monospace;
-             background: rgba(0, 0, 0, 0.6);
-             color: white;
-             padding: 12px;
-             border-radius: 8px;
-             ">
-        <div>Distant Observer Time: <span id="observer-time">0.0</span> s</div>
-        <div>Object Time: <span id="object-time">0.0</span> s</div>
+        <label for="massSlider">BH Mass ($M_{\odot}$) <span id="massValue">1.0</span></label>
+        <input type="range" id="massSlider" min="0.1" max="5" step="0.1" value="1.0" title="Approximate mass relative to Solar Masses, affects horizon size and lensing strength">
+
+        <label for="diskSpeedSlider">Disk Ang. Vel. (rel.) <span id="diskSpeedValue">0.10</span></label>
+        <input type="range" id="diskSpeedSlider" min="0" max="0.5" step="0.01" value="0.1" title="Relative angular velocity of the accretion disk material (affects shader animation speed)">
+
+        <label for="diskTiltSlider">Disk Inclination ($\degree$) <span id="diskTiltValue">30</span></label>
+        <input type="range" id="diskTiltSlider" min="0" max="90" step="1" value="30" title="Inclination angle of the accretion disk relative to the viewing plane">
+
+        <label for="simSpeedSlider">Simulation Speed (x) <span id="simSpeedValue">1.0</span></label>
+        <input type="range" id="simSpeedSlider" min="0.1" max="5" step="0.1" value="1.0" title="Adjust the overall speed of the simulation (disk animation and object fall)">
+
+        <label for="lensingToggle">
+            <input type="checkbox" id="lensingToggle" checked title="Enable/Disable the post-processing gravitational lensing approximation"> Lensing Approx.
+        </label>
+
+        <button id="dropObjectButton">Drop Test Mass</button>
     </div>
+
+    <div id="info">
+        <h4>Simulation Overview</h4>
+        <p>This simulation demonstrates gravitational lensing and accretion disk dynamics around a non-rotating (Schwarzschild) black hole using WebGL.</p>
+        <h4>Key Effects Approximated:</h4>
+        <p>• <strong>Gravitational Lensing:</strong> Background stars are distorted via a post-processing shader. <br>
+           • <strong>Accretion Disk:</strong> Visualized as a luminous, differentially rotating structure. <br>
+           • <strong>Time Dilation:</strong> The infalling test mass visually slows down as it approaches the event horizon. <br>
+           • <strong>Redshifting:</strong> The test mass appears redder as it gets closer due to gravitational potential. <br>
+           • <strong>Spaghettification:</strong> The test mass is visually stretched vertically as it nears the horizon. <br>
+           • <strong>Fading:</strong> The test mass fades from view as it crosses the event horizon threshold.</p>
+        <h4>Limitations:</h4>
+        <p>• Assumes a non-rotating black hole. <br>
+           • Lensing, time dilation, redshift, and spaghettification are simplified approximations. <br>
+           • Accretion disk shader is artistic, not a physical fluid simulation. <br>
+           • No relativistic effects (e.g., Doppler beaming) explicitly simulated on the disk.</p>
+
+        <div id="simDetails">
+             <strong>Project ID:</strong> BH_Sim_WebGL_v1.3<br> <strong>Researcher:</strong> [Your Name/Group Here]<br> <strong>Location:</strong> Bhopal, MP, India<br>
+             <strong>Date/Time:</strong> <span id="simDateTime"></span>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="x-shader/x-vertex" id="lensingVertexShader">
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+    </script>
+    <script type="x-shader/x-fragment" id="lensingFragmentShader">
+        uniform sampler2D tDiffuse;
+        uniform vec2 resolution;
+        uniform vec2 holePosition; // Screen space [0, 1]
+        uniform float holeRadius;   // Screen space radius (approx)
+        uniform float massFactor;   // Lensing strength
+
+        varying vec2 vUv;
+
+        void main() {
+            vec2 uv = vUv;
+            vec2 centeredUv = uv - holePosition;
+            float aspect = resolution.x / resolution.y;
+            vec2 aspectCorrectedUv = centeredUv * vec2(aspect, 1.0);
+            float dist = length(aspectCorrectedUv);
+
+            if (dist < holeRadius) {
+                gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Black hole center
+                return;
+            }
+
+            // Simplified Lensing Distortion (Approximation)
+            float lensingStrength = massFactor * holeRadius * 0.15;
+            float distortion = lensingStrength / (dist + 0.01); // Avoid div by zero
+
+            vec2 distortedUv = uv - normalize(centeredUv) * distortion;
+            distortedUv = clamp(distortedUv, 0.0, 1.0);
+
+            vec4 color = texture2D(tDiffuse, distortedUv);
+
+            // Fake Einstein ring brightening (subtle)
+            float ringInner = holeRadius * 1.1;
+            float ringOuter = holeRadius * 1.8;
+            float ringFactor = smoothstep(ringInner, ringOuter, dist) * (1.0 - smoothstep(ringOuter, ringOuter * 1.5, dist));
+            color.rgb = mix(color.rgb, vec3(1.0), ringFactor * 0.1);
+
+            gl_FragColor = color;
+        }
+    </script>
+    <script type="x-shader/x-vertex" id="accretionDiskVertexShader">
+        varying vec2 vUv;
+        varying float vRadius;
+        void main() {
+            vUv = uv;
+            vRadius = length(position.xy);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    </script>
+    <script type="x-shader/x-fragment" id="accretionDiskFragmentShader">
+        uniform sampler2D tNoise;
+        uniform float uTime;
+        uniform float uSpeed;
+        uniform float uInnerRadius;
+        uniform float uOuterRadius;
+        uniform float uMass;
+
+        varying vec2 vUv;
+        varying float vRadius;
+
+        // Noise functions (same as before)
+        float rand(vec2 n) { return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453); }
+        float noise(vec2 p) { vec2 ip=floor(p); vec2 u=fract(p); u=u*u*(3.0-2.0*u); float r=mix(mix(rand(ip),rand(ip+vec2(1.,0.)),u.x),mix(rand(ip+vec2(0.,1.)),rand(ip+vec2(1.,1.)),u.x),u.y); return r*r; }
+        float fbm(vec2 p, int octaves, float persistence) { float t=0.; float f=1.; float a=1.; float mv=0.; for(int i=0; i<octaves; i++) { t+=noise(p*f)*a; mv+=a; a*=persistence; f*=2.; } return t/mv; }
+
+        void main() {
+            float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
+            float radiusNormalized = vRadius / uOuterRadius;
+            float timeSpeed = uTime * uSpeed * 0.5;
+            vec2 swirlUv = vec2(angle / (2. * 3.14159) + timeSpeed + radiusNormalized * 0.1, radiusNormalized * 3.0);
+
+            #ifdef USE_TEXTURE
+                float noiseVal = texture2D(tNoise, swirlUv).r;
+            #else
+                float noiseVal = fbm(swirlUv * 3.0, 4, 0.5);
+            #endif
+
+            vec3 colorInner = vec3(1.0, 0.8, 0.4) * 2.0;
+            vec3 colorMid = vec3(1.0, 0.3, 0.1) * 1.5;
+            vec3 colorOuter = vec3(0.8, 0.1, 0.0) * 1.0;
+            vec3 color = mix(colorInner, colorMid, smoothstep(uInnerRadius/uOuterRadius, (uInnerRadius+uOuterRadius*0.3)/uOuterRadius, radiusNormalized));
+            color = mix(color, colorOuter, smoothstep((uInnerRadius+uOuterRadius*0.3)/uOuterRadius, 0.9, radiusNormalized));
+            color *= (1.0 + uMass * 0.1);
+
+            float brightness = smoothstep(0.3, 0.7, noiseVal);
+            float edgeFadeInner = smoothstep(uInnerRadius * 0.95, uInnerRadius * 1.1, vRadius);
+            float edgeFadeOuter = 1.0 - smoothstep(uOuterRadius * 0.85, uOuterRadius, vRadius);
+            float alpha = brightness * edgeFadeInner * edgeFadeOuter;
+            brightness *= mix(1.0, 1.5, smoothstep(uInnerRadius * 1.1, uInnerRadius * 1.5, vRadius));
+
+            gl_FragColor = vec4(color * brightness, alpha);
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+        let scene, camera, renderer, controls, composer;
+        let eventHorizon, accretionDisk, backgroundSphere;
+        let fallingObject = null;
+        let massFactor = 1.0;
+        let diskRotationSpeed = 0.1;
+        let diskTilt = 30 * Math.PI / 180;
+        let simulationSpeedFactor = 1.0; // **NEW:** Simulation speed multiplier
+        let lensingShaderPass;
+        let renderPass, outputPass;
+
+        const BASE_HORIZON_RADIUS = 5;
+        const BASE_DISK_INNER_RADIUS = 6;
+        const BASE_DISK_OUTER_RADIUS = 25;
+        const TEST_MASS_RADIUS = 1; // Size of the falling sphere
+
+        // Falling object variables
+        let fallingObjectActive = false;
+        let fallingObjectVelocity = new THREE.Vector3();
+        const FALLING_OBJECT_START_POS = new THREE.Vector3(0, 0, 70);
+        const GRAVITATIONAL_CONSTANT = 15.0;
+        const clock = new THREE.Clock();
+        const FALLING_OBJECT_BASE_COLOR = new THREE.Color(0xffffff); // Initial color (white)
+        const FALLING_OBJECT_REDSHIFT_COLOR = new THREE.Color(0xff0000); // Target color (red)
+
+        // --- DOM Elements ---
+        const massSlider = document.getElementById('massSlider');
+        const massValueSpan = document.getElementById('massValue');
+        const diskSpeedSlider = document.getElementById('diskSpeedSlider');
+        const diskSpeedValueSpan = document.getElementById('diskSpeedValue');
+        const diskTiltSlider = document.getElementById('diskTiltSlider');
+        const diskTiltValueSpan = document.getElementById('diskTiltValue');
+        const lensingToggle = document.getElementById('lensingToggle');
+        const dropObjectButton = document.getElementById('dropObjectButton');
+        const simDateTimeSpan = document.getElementById('simDateTime');
+
+        init();
+        animate();
+
+        function init() {
+            // Set current date and time
+            simDateTimeSpan.textContent = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(0, 25, 50);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.minDistance = 10;
+            controls.maxDistance = 400;
+            controls.target.set(0, 0, 0);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Slightly brighter ambient
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xffffff, 0.8); // Slightly brighter point light
+            camera.add(pointLight);
+            scene.add(camera);
+
+            const textureLoader = new THREE.TextureLoader();
+            // Provide fallback URLs or placeholders for textures
+            const starTexture = textureLoader.load(
+                './textures/starfield.jpg',
+                undefined, // onLoad callback (optional)
+                undefined, // onProgress callback (optional)
+                (err) => { // onError callback
+                    console.error('Error loading star texture:', err);
+                    // Use a simple color or placeholder if texture fails
+                    backgroundMaterial.map = null;
+                    backgroundMaterial.color.set(0x050510); // Match body background
+                    backgroundMaterial.needsUpdate = true;
+                }
+            );
+            starTexture.colorSpace = THREE.SRGBColorSpace;
+
+            const noiseTexture = textureLoader.load(
+                './textures/Lava004_1K-JPG_Color.jpg',
+                undefined,
+                undefined,
+                (err) => {
+                    console.error('Error loading noise texture:', err);
+                    // Handle error, maybe disable texture use in shader
+                    if (accretionDisk) {
+                        accretionDisk.material.uniforms.tNoise.value = null; // Or a default texture
+                        // Potentially switch to procedural noise if USE_TEXTURE define is handled
+                        // accretionDisk.material.defines.USE_TEXTURE = false; // Requires shader logic
+                        accretionDisk.material.needsUpdate = true;
+                    }
+                }
+             );
+            noiseTexture.wrapS = THREE.RepeatWrapping;
+            noiseTexture.wrapT = THREE.RepeatWrapping;
+
+
+            const backgroundGeometry = new THREE.SphereGeometry(1500, 64, 32);
+            const backgroundMaterial = new THREE.MeshBasicMaterial({ map: starTexture, side: THREE.BackSide });
+            backgroundSphere = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+            scene.add(backgroundSphere);
+
+            const horizonGeometry = new THREE.SphereGeometry(BASE_HORIZON_RADIUS, 64, 32);
+            // Make horizon slightly visible for debugging/reference if needed
+            const horizonMaterial = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.1 });
+            eventHorizon = new THREE.Mesh(horizonGeometry, horizonMaterial);
+            updateBlackHoleSize();
+            scene.add(eventHorizon);
+
+            // Accretion Disk (ShaderMaterial - same as before)
+            const diskGeometry = new THREE.RingGeometry(BASE_DISK_INNER_RADIUS, BASE_DISK_OUTER_RADIUS, 128, 8);
+             const diskMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    tNoise: { value: noiseTexture },
+                    uTime: { value: 0.0 },
+                    uSpeed: { value: diskRotationSpeed },
+                    uInnerRadius: { value: BASE_DISK_INNER_RADIUS },
+                    uOuterRadius: { value: BASE_DISK_OUTER_RADIUS },
+                    uMass: { value: massFactor },
+                },
+                vertexShader: document.getElementById('accretionDiskVertexShader').textContent,
+                fragmentShader: document.getElementById('accretionDiskFragmentShader').textContent,
+                side: THREE.DoubleSide,
+                transparent: true,
+                 blending: THREE.AdditiveBlending,
+                 depthWrite: false,
+                 defines: { USE_TEXTURE: true } // Set true if using noise texture
+            });
+            accretionDisk = new THREE.Mesh(diskGeometry, diskMaterial);
+            updateAccretionDiskProperties();
+            scene.add(accretionDisk);
+
+            // --- Falling Object (Sphere with modifications) ---
+            const fallingObjectGeometry = new THREE.SphereGeometry(TEST_MASS_RADIUS, 32, 16);
+            // **MODIFIED:** Added transparent: true for fading
+            const fallingObjectMaterial = new THREE.MeshStandardMaterial({
+                 color: FALLING_OBJECT_BASE_COLOR.clone(), // Start with base color
+                 emissive: 0x222222,
+                 roughness: 0.8,
+                 metalness: 0.1,
+                 transparent: true, // **NEW:** Enable transparency
+                 opacity: 1.0        // **NEW:** Start fully opaque
+            });
+            fallingObject = new THREE.Mesh(fallingObjectGeometry, fallingObjectMaterial);
+            fallingObject.position.copy(FALLING_OBJECT_START_POS);
+            fallingObject.visible = false; // Initially hidden
+            scene.add(fallingObject);
+            dropObjectButton.disabled = false;
+
+
+            // --- Post Processing Setup (same as before) ---
+            setupPostProcessing();
+
+            // --- Event Listeners (same as before) ---
+            massSlider.addEventListener('input', handleMassChange);
+            diskSpeedSlider.addEventListener('input', handleDiskSpeedChange);
+            diskTiltSlider.addEventListener('input', handleDiskTiltChange);
+            lensingToggle.addEventListener('change', handleLensingToggle);
+            dropObjectButton.addEventListener('click', resetFallingObject);
+            simSpeedSlider.addEventListener('input', handleSimSpeedChange);
+            window.addEventListener('resize', onWindowResize);
+        }
+
+
+        function setupPostProcessing() {
+            composer = new EffectComposer(renderer);
+            renderPass = new RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            const lensingShader = {
+                uniforms: {
+                    'tDiffuse': { value: null },
+                    'resolution': { value: new THREE.Vector2(window.innerWidth * window.devicePixelRatio, window.innerHeight * window.devicePixelRatio) },
+                    'holePosition': { value: new THREE.Vector2(0.5, 0.5) },
+                    'holeRadius': { value: 0.1 }, // Updated in animate loop
+                    'massFactor': { value: massFactor }
+                },
+                vertexShader: document.getElementById('lensingVertexShader').textContent,
+                fragmentShader: document.getElementById('lensingFragmentShader').textContent
+            };
+            lensingShaderPass = new ShaderPass(lensingShader);
+            lensingShaderPass.enabled = lensingToggle.checked;
+            composer.addPass(lensingShaderPass);
+
+            outputPass = new OutputPass();
+            composer.addPass(outputPass);
+        }
+
+        // --- Control Handlers (same as before) ---
+        function handleMassChange(event) {
+            massFactor = parseFloat(event.target.value);
+            massValueSpan.textContent = massFactor.toFixed(1);
+            updateBlackHoleSize();
+            updateAccretionDiskProperties();
+            if (lensingShaderPass) lensingShaderPass.uniforms.massFactor.value = massFactor;
+            if (accretionDisk) accretionDisk.material.uniforms.uMass.value = massFactor;
+        }
+
+        function handleDiskSpeedChange(event) {
+            diskRotationSpeed = parseFloat(event.target.value);
+            diskSpeedValueSpan.textContent = diskRotationSpeed.toFixed(2);
+            if (accretionDisk) accretionDisk.material.uniforms.uSpeed.value = diskRotationSpeed;
+        }
+
+        // **NEW:** Handler for Simulation Speed
+        function handleSimSpeedChange(event) {
+            simulationSpeedFactor = parseFloat(event.target.value);
+            simSpeedValueSpan.textContent = simulationSpeedFactor.toFixed(1);
+        }
+
+
+        function handleDiskTiltChange(event) {
+            diskTilt = parseFloat(event.target.value) * Math.PI / 180;
+            diskTiltValueSpan.textContent = event.target.value;
+            updateAccretionDiskProperties();
+        }
+
+        function handleLensingToggle(event) {
+            if (lensingShaderPass) lensingShaderPass.enabled = event.target.checked;
+        }
+
+        // --- Update Functions (mostly same, disk update refined) ---
+        function updateBlackHoleSize() {
+            const scale = massFactor;
+            eventHorizon.scale.set(scale, scale, scale);
+            eventHorizon.userData.radius = BASE_HORIZON_RADIUS * scale; // Store actual radius
+        }
+
+        function updateAccretionDiskProperties() {
+             if (!accretionDisk) return;
+             const currentHorizonRadius = eventHorizon.userData.radius || BASE_HORIZON_RADIUS;
+             // Ensure inner radius doesn't shrink below a minimum, even for low mass
+             const innerRadius = Math.max(BASE_DISK_INNER_RADIUS * 0.5, currentHorizonRadius * 1.2);
+             const outerRadius = BASE_DISK_OUTER_RADIUS * (1 + (massFactor - 1) * 0.15);
+
+             // Regenerate geometry if radii change significantly
+             // Check if current geometry radii match the new calculated ones
+             const geomParams = accretionDisk.geometry.parameters;
+             if (Math.abs(geomParams.innerRadius - innerRadius) > 0.1 || Math.abs(geomParams.outerRadius - outerRadius) > 0.1) {
+                 accretionDisk.geometry.dispose();
+                 accretionDisk.geometry = new THREE.RingGeometry(innerRadius, outerRadius, 128, 8);
+             }
+
+             accretionDisk.material.uniforms.uInnerRadius.value = innerRadius;
+             accretionDisk.material.uniforms.uOuterRadius.value = outerRadius;
+             accretionDisk.rotation.x = diskTilt;
+             accretionDisk.material.uniforms.uMass.value = massFactor;
+             accretionDisk.material.uniforms.uSpeed.value = diskRotationSpeed;
+        }
+
+        function resetFallingObject() {
+            if (!fallingObject) return;
+            fallingObject.position.copy(FALLING_OBJECT_START_POS);
+            fallingObject.scale.set(1, 1, 1); // Reset scale
+            fallingObjectVelocity.set(0, 0, 0);
+            fallingObjectActive = true;
+            fallingObject.visible = true;
+            // Reset material properties
+            fallingObject.material.color.copy(FALLING_OBJECT_BASE_COLOR);
+            fallingObject.material.opacity = 1.0;
+            fallingObject.material.emissive.setHex(0x222222); // Reset emissive color
+        }
+
+        // --- **MODIFIED:** updateFallingObject ---
+        function updateFallingObject(deltaTime) {
+            if (!fallingObjectActive || !fallingObject) return;
+
+            const bhPosition = eventHorizon.position; // Assumed to be at (0,0,0)
+            const directionToBH = bhPosition.clone().sub(fallingObject.position);
+            const distanceSq = directionToBH.lengthSq();
+            const distance = Math.sqrt(distanceSq);
+            const schwarzschildRadius = eventHorizon.userData.radius;
+            const horizonThreshold = schwarzschildRadius * 1.05; // Where effects become strong
+            const fadeStartDistance = schwarzschildRadius * 1.01; // Slightly inside threshold
+            const fadeEndDistance = schwarzschildRadius * 0.98; // Fully faded just inside horizon
+
+            // --- Physics Update ---
+            // Stop physics update slightly *outside* the visual horizon to allow fading/stretching
+            if (distance > fadeEndDistance) {
+                // Simplified Newtonian gravity, scaled by massFactor
+                const forceMagnitude = (GRAVITATIONAL_CONSTANT * massFactor) / Math.max(distanceSq, 0.1); // Avoid div by zero very close
+                const acceleration = directionToBH.normalize().multiplyScalar(forceMagnitude); // directionToBH is now normalized
+
+                // --- Time Dilation Approximation ---
+                let timeDilationFactor = Math.sqrt(Math.max(0.0, 1.0 - schwarzschildRadius / distance));
+                timeDilationFactor = Math.max(0.0001, timeDilationFactor); // Prevent complete stop too early
+                const effectiveDeltaTime = deltaTime * timeDilationFactor;
+
+                // Update velocity & position using effective time
+                fallingObjectVelocity.add(acceleration.multiplyScalar(effectiveDeltaTime));
+                fallingObject.position.add(fallingObjectVelocity.clone().multiplyScalar(effectiveDeltaTime));
+
+            } else {
+                 // Object is inside the fade zone or fully inside, stop its movement relative to external observer
+                 fallingObjectVelocity.set(0,0,0);
+                 // Optionally clamp position exactly at fadeEndDistance if needed
+                 // fallingObject.position.copy(directionToBH.normalize().multiplyScalar(-fadeEndDistance).add(bhPosition));
+            }
+
+
+            // --- Visual Effects based on distance ---
+            const proximityFactor = Math.max(0, 1.0 - (distance - schwarzschildRadius) / (FALLING_OBJECT_START_POS.z - schwarzschildRadius)); // 0 far away, 1 at horizon
+
+            // 1. Redshifting: Interpolate color from white to red based on proximity
+            fallingObject.material.color.lerpColors(FALLING_OBJECT_BASE_COLOR, FALLING_OBJECT_REDSHIFT_COLOR, proximityFactor * proximityFactor); // Use squared factor for stronger effect near BH
+
+            // 2. Spaghettification (Visual Stretching): Apply closer to the horizon
+            const stretchStartDistance = schwarzschildRadius * 1.5;
+            if (distance < stretchStartDistance) {
+                const stretchFactor = Math.max(0, 1.0 - (distance - schwarzschildRadius) / (stretchStartDistance - schwarzschildRadius)); // 0 at stretchStart, 1 at horizon
+                const maxStretch = 3.0; // How much it stretches vertically
+                const maxSquash = 0.4; // How much it squashes horizontally
+
+                const stretchAmount = 1.0 + stretchFactor * (maxStretch - 1.0);
+                const squashAmount = 1.0 + stretchFactor * (maxSquash - 1.0); // squashAmount will be < 1
+
+                // Apply scaling - assumes object falls mostly along Z initially,
+                // but ideally should align with velocity or directionToBH
+                // Simple approach: Scale along world Y (vertical relative to disk plane)
+                // A more accurate approach would require rotating the object or applying scale along the direction vector
+                fallingObject.scale.set(squashAmount, stretchAmount, squashAmount);
+
+                // Make it glow slightly more as it stretches/heats (visual flair)
+                fallingObject.material.emissive.lerpColors(new THREE.Color(0x222222), new THREE.Color(0x884444), stretchFactor);
+
+            } else {
+                fallingObject.scale.set(1, 1, 1); // Reset scale if far away
+                fallingObject.material.emissive.setHex(0x222222); // Reset emissive
+            }
+
+
+            // 3. Fading/Disappearance: Fade out completely just inside the horizon
+            if (distance < fadeStartDistance) {
+                 const fadeFactor = Math.max(0, (distance - fadeEndDistance) / (fadeStartDistance - fadeEndDistance)); // 1 at fadeStart, 0 at fadeEnd
+                 fallingObject.material.opacity = fadeFactor;
+                 if (fadeFactor <= 0.01) { // Effectively invisible
+                     fallingObjectActive = false; // Stop processing this object
+                     fallingObject.visible = false;
+                 }
+             } else {
+                 fallingObject.material.opacity = 1.0; // Ensure it's opaque outside the fade zone
+             }
+        }
+        // --- End of Modified updateFallingObject ---
+
+
+        function updateLensingUniforms() {
+            if (!lensingShaderPass || !lensingShaderPass.enabled) return;
+
+            const screenPos = eventHorizon.position.clone().project(camera);
+            lensingShaderPass.uniforms.holePosition.value.x = (screenPos.x + 1) / 2;
+            lensingShaderPass.uniforms.holePosition.value.y = (screenPos.y + 1) / 2;
+
+            const worldRadius = eventHorizon.userData.radius;
+            const distance = Math.max(camera.position.distanceTo(eventHorizon.position), 0.1);
+
+            const vFOV = camera.fov * Math.PI / 180;
+            const angularSize = 2 * Math.atan(worldRadius / distance);
+            let screenRadius = angularSize / vFOV; // Fraction of vertical screen height
+
+            // Adjust for aspect ratio to get a more circular projection
+            screenRadius *= (window.innerHeight / Math.min(window.innerWidth, window.innerHeight)); // Approximation
+
+            lensingShaderPass.uniforms.holeRadius.value = screenRadius * 0.5; // Adjust scaling factor as needed
+            lensingShaderPass.uniforms.massFactor.value = massFactor;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+
+            if (lensingShaderPass) {
+                lensingShaderPass.uniforms.resolution.value.set(
+                    window.innerWidth * window.devicePixelRatio,
+                    window.innerHeight * window.devicePixelRatio
+                );
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            // **NEW:** Calculate adjusted delta time based on sim speed
+            const adjustedDeltaTime = deltaTime * simulationSpeedFactor;
+            // **NEW:** Calculate adjusted elapsed time for shaders/animations
+            const adjustedElapsedTime = elapsedTime * simulationSpeedFactor;
+
+            if (accretionDisk && accretionDisk.material) {
+                // **MODIFIED:** Use adjusted elapsed time for disk animation
+                accretionDisk.material.uniforms.uTime.value = adjustedElapsedTime;
+            }
+
+            // **MODIFIED:** Pass adjusted delta time to falling object update
+            updateFallingObject(adjustedDeltaTime);
+
+            if (lensingShaderPass && lensingShaderPass.enabled) {
+                updateLensingUniforms();
+            }
+
+            controls.update();
+            // **MODIFIED:** Render using the original deltaTime for composer?
+            // Or adjustedDeltaTime? Let's use original for now, as post-processing
+            // effects might not need speed adjustment. Test if needed.
+            composer.render(deltaTime);
+        }
+
+    </script>
 </body>
 </html>
