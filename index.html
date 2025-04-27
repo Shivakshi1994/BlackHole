@@ -90,7 +90,7 @@
              margin-bottom: 8px;
              color: #9cf;
              font-size: 1em;
-             border-bottom: 1px solid #445;
+             border-bottom: 1px dashed #445; /* Changed to dashed */
              padding-bottom: 4px;
          }
          #info p {
@@ -105,6 +105,31 @@
          #simDetails { font-size: 0.9em; color: #89a; margin-top: 15px; border-top: 1px dashed #445; padding-top: 10px; }
          a { color: #8af; text-decoration: none; }
          a:hover { text-decoration: underline; }
+
+        /* NEW Styles for Time Display */
+         #timeDisplay {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #334;
+         }
+        #timeDisplay label {
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: #ccc;
+        }
+        #timeDisplay div {
+            margin-bottom: 8px; /* Space between time values */
+        }
+         #timeDisplay span {
+             font-weight: bold;
+             color: #fff;
+             float: right;
+             background-color: rgba(0,0,0,0.3);
+             padding: 1px 4px;
+             border-radius: 3px;
+             min-width: 60px; /* Ensure space for value */
+             text-align: right;
+         }
     </style>
 </head>
 <body>
@@ -128,6 +153,17 @@
         </label>
 
         <button id="dropObjectButton">Drop Test Mass</button>
+
+        <div id="timeDisplay">
+            <h4>Observer Time</h4>
+            <div>
+                <label>Far Observer Time: <span id="farObserverTime">0.00</span></label>
+            </div>
+            <div>
+                 <label id="nearObserverTimeLabel">Near Observer Time: <span id="nearObserverTime">0.00</span></label>
+            </div>
+        </div>
+
     </div>
 
     <div id="info">
@@ -267,7 +303,7 @@
         let massFactor = 1.0;
         let diskRotationSpeed = 0.1;
         let diskTilt = 30 * Math.PI / 180;
-        let simulationSpeedFactor = 1.0; // **NEW:** Simulation speed multiplier
+        let simulationSpeedFactor = 1.0; // Simulation speed multiplier
         let lensingShaderPass;
         let renderPass, outputPass;
 
@@ -285,6 +321,10 @@
         const FALLING_OBJECT_BASE_COLOR = new THREE.Color(0xffffff); // Initial color (white)
         const FALLING_OBJECT_REDSHIFT_COLOR = new THREE.Color(0xff0000); // Target color (red)
 
+        // NEW: Time tracking variables
+        let farObserverTime = 0.0;
+        let nearObserverTime = 0.0; // Time experienced by the falling object
+
         // --- DOM Elements ---
         const massSlider = document.getElementById('massSlider');
         const massValueSpan = document.getElementById('massValue');
@@ -294,6 +334,14 @@
         const diskTiltValueSpan = document.getElementById('diskTiltValue');
         const lensingToggle = document.getElementById('lensingToggle');
         const dropObjectButton = document.getElementById('dropObjectButton');
+        const simSpeedSlider = document.getElementById('simSpeedSlider'); // Get reference
+        const simSpeedValueSpan = document.getElementById('simSpeedValue'); // Get reference
+
+        // NEW: Get references to time display elements
+        const farObserverTimeSpan = document.getElementById('farObserverTime');
+        const nearObserverTimeSpan = document.getElementById('nearObserverTime');
+        const nearObserverTimeLabel = document.getElementById('nearObserverTimeLabel');
+
 
         init();
         animate();
@@ -401,8 +449,8 @@
                  emissive: 0x222222,
                  roughness: 0.8,
                  metalness: 0.1,
-                 transparent: true, // **NEW:** Enable transparency
-                 opacity: 1.0        // **NEW:** Start fully opaque
+                 transparent: true, // Enable transparency
+                 opacity: 1.0        // Start fully opaque
             });
             fallingObject = new THREE.Mesh(fallingObjectGeometry, fallingObjectMaterial);
             fallingObject.position.copy(FALLING_OBJECT_START_POS);
@@ -420,8 +468,11 @@
             diskTiltSlider.addEventListener('input', handleDiskTiltChange);
             lensingToggle.addEventListener('change', handleLensingToggle);
             dropObjectButton.addEventListener('click', resetFallingObject);
-            simSpeedSlider.addEventListener('input', handleSimSpeedChange);
+            simSpeedSlider.addEventListener('input', handleSimSpeedChange); // Corrected variable name
             window.addEventListener('resize', onWindowResize);
+
+            // Initial time display update
+            updateTimeDisplay();
         }
 
 
@@ -465,12 +516,11 @@
             if (accretionDisk) accretionDisk.material.uniforms.uSpeed.value = diskRotationSpeed;
         }
 
-        // **NEW:** Handler for Simulation Speed
+        // Handler for Simulation Speed
         function handleSimSpeedChange(event) {
             simulationSpeedFactor = parseFloat(event.target.value);
             simSpeedValueSpan.textContent = simulationSpeedFactor.toFixed(1);
         }
-
 
         function handleDiskTiltChange(event) {
             diskTilt = parseFloat(event.target.value) * Math.PI / 180;
@@ -522,9 +572,14 @@
             fallingObject.material.color.copy(FALLING_OBJECT_BASE_COLOR);
             fallingObject.material.opacity = 1.0;
             fallingObject.material.emissive.setHex(0x222222); // Reset emissive color
+
+            // NEW: Reset near and far observer time and update label
+            nearObserverTime = 0.0;
+            farObserverTime = 0.0; // Reset far observer time here
+            updateTimeDisplay(); // Update display immediately on reset
         }
 
-        // --- **MODIFIED:** updateFallingObject ---
+        // **MODIFIED:** updateFallingObject to calculate near observer time
         function updateFallingObject(deltaTime) {
             if (!fallingObjectActive || !fallingObject) return;
 
@@ -533,25 +588,29 @@
             const distanceSq = directionToBH.lengthSq();
             const distance = Math.sqrt(distanceSq);
             const schwarzschildRadius = eventHorizon.userData.radius;
-            const horizonThreshold = schwarzschildRadius * 1.05; // Where effects become strong
-            const fadeStartDistance = schwarzschildRadius * 1.01; // Slightly inside threshold
-            const fadeEndDistance = schwarzschildRadius * 0.98; // Fully faded just inside horizon
+            // const horizonThreshold = schwarzschildRadius * 1.05; // Where effects become strong - not used directly in physics
+            const fadeStartDistance = schwarzschildRadius * 1.01; // Slightly inside threshold for visual fade
+            const fadeEndDistance = schwarzschildRadius * 0.98; // Fully faded just inside horizon for visual fade
 
             // --- Physics Update ---
-            // Stop physics update slightly *outside* the visual horizon to allow fading/stretching
+            // Stop physics update slightly *outside* the visual horizon to allow visual fading/stretching
             if (distance > fadeEndDistance) {
-                // Simplified Newtonian gravity, scaled by massFactor
-                const forceMagnitude = (GRAVITATIONAL_CONSTANT * massFactor) / Math.max(distanceSq, 0.1); // Avoid div by zero very close
-                const acceleration = directionToBH.normalize().multiplyScalar(forceMagnitude); // directionToBH is now normalized
+                 // Simplified Newtonian gravity, scaled by massFactor
+                 const forceMagnitude = (GRAVITATIONAL_CONSTANT * massFactor) / Math.max(distanceSq, 0.1); // Avoid div by zero very close
+                 const acceleration = directionToBH.normalize().multiplyScalar(forceMagnitude);
 
-                // --- Time Dilation Approximation ---
-                let timeDilationFactor = Math.sqrt(Math.max(0.0, 1.0 - schwarzschildRadius / distance));
-                timeDilationFactor = Math.max(0.0001, timeDilationFactor); // Prevent complete stop too early
-                const effectiveDeltaTime = deltaTime * timeDilationFactor;
+                 // --- Time Dilation Approximation for Physics ---
+                 let timeDilationFactorPhysics = Math.sqrt(Math.max(0.0, 1.0 - schwarzschildRadius / distance));
+                 timeDilationFactorPhysics = Math.max(0.0001, timeDilationFactorPhysics); // Prevent complete stop too early
 
-                // Update velocity & position using effective time
-                fallingObjectVelocity.add(acceleration.multiplyScalar(effectiveDeltaTime));
-                fallingObject.position.add(fallingObjectVelocity.clone().multiplyScalar(effectiveDeltaTime));
+                 // Update velocity & position using effective time for PHYSICS
+                 const effectiveDeltaTimeForPhysics = deltaTime * timeDilationFactorPhysics;
+                 fallingObjectVelocity.add(acceleration.multiplyScalar(effectiveDeltaTimeForPhysics));
+                 fallingObject.position.add(fallingObjectVelocity.clone().multiplyScalar(effectiveDeltaTimeForPhysics));
+
+                 // NEW: Calculate near observer time based on *actual* delta time and time dilation
+                 // Use the physics time dilation factor for the near observer's clock
+                 nearObserverTime += deltaTime * timeDilationFactorPhysics * simulationSpeedFactor;
 
             } else {
                  // Object is inside the fade zone or fully inside, stop its movement relative to external observer
@@ -586,9 +645,14 @@
                 // Make it glow slightly more as it stretches/heats (visual flair)
                 fallingObject.material.emissive.lerpColors(new THREE.Color(0x222222), new THREE.Color(0x884444), stretchFactor);
 
+                 // NEW: Update near observer label to show current distance
+                 nearObserverTimeLabel.textContent = `Near Observer Time (at ${distance.toFixed(2)}): `;
+
             } else {
                 fallingObject.scale.set(1, 1, 1); // Reset scale if far away
                 fallingObject.material.emissive.setHex(0x222222); // Reset emissive
+                 // NEW: Reset near observer label when far away
+                 nearObserverTimeLabel.textContent = 'Near Observer Time: ';
             }
 
 
@@ -599,6 +663,9 @@
                  if (fadeFactor <= 0.01) { // Effectively invisible
                      fallingObjectActive = false; // Stop processing this object
                      fallingObject.visible = false;
+                     // NEW: Reset near observer time when object disappears
+                     nearObserverTime = 0.0;
+                     nearObserverTimeLabel.textContent = 'Near Observer Time: '; // Reset label text
                  }
              } else {
                  fallingObject.material.opacity = 1.0; // Ensure it's opaque outside the fade zone
@@ -642,33 +709,49 @@
             }
         }
 
+        // NEW: Function to update the time display spans
+        function updateTimeDisplay() {
+            farObserverTimeSpan.textContent = farObserverTime.toFixed(2); // Display with 2 decimal places
+            nearObserverTimeSpan.textContent = nearObserverTime.toFixed(2); // Display with 2 decimal places
+            nearObserverTimeLabel.appendChild(nearObserverTimeSpan);
+        }
+
+
         function animate() {
             requestAnimationFrame(animate);
             const deltaTime = clock.getDelta();
-            const elapsedTime = clock.getElapsedTime();
+            // const elapsedTime = clock.getElapsedTime(); // elapsedTime is not used for time tracking
 
-            // **NEW:** Calculate adjusted delta time based on sim speed
+            // Calculate adjusted delta time based on sim speed
             const adjustedDeltaTime = deltaTime * simulationSpeedFactor;
-            // **NEW:** Calculate adjusted elapsed time for shaders/animations
-            const adjustedElapsedTime = elapsedTime * simulationSpeedFactor;
 
-            if (accretionDisk && accretionDisk.material) {
-                // **MODIFIED:** Use adjusted elapsed time for disk animation
-                accretionDisk.material.uniforms.uTime.value = adjustedElapsedTime;
+            // NEW: Only update far observer time if the falling object is active
+            if (fallingObjectActive) {
+               farObserverTime += adjustedDeltaTime;
             }
 
-            // **MODIFIED:** Pass adjusted delta time to falling object update
-            updateFallingObject(adjustedDeltaTime);
+
+            if (accretionDisk && accretionDisk.material) {
+                // Use elapsed time for disk animation (or adjusted time if preferred)
+                 // Let's keep disk animation tied to overall elapsed time for consistency with previous version,
+                 // but could use adjustedElapsedTime here if we want disk speed to be tied to sim speed slider.
+                 // For now, keeping as is. If using adjustedElapsedTime, uncomment below:
+                // accretionDisk.material.uniforms.uTime.value += adjustedDeltaTime * 0.5; // Increment time by adjustedDeltaTime
+                 accretionDisk.material.uniforms.uTime.value += deltaTime * 0.5; // Use original deltaTime for disk for now
+            }
+
+            // Pass original delta time to falling object update for physics calculation
+            updateFallingObject(deltaTime); // Pass original deltaTime here
 
             if (lensingShaderPass && lensingShaderPass.enabled) {
                 updateLensingUniforms();
             }
 
             controls.update();
-            // **MODIFIED:** Render using the original deltaTime for composer?
-            // Or adjustedDeltaTime? Let's use original for now, as post-processing
-            // effects might not need speed adjustment. Test if needed.
-            composer.render(deltaTime);
+            composer.render(deltaTime); // Render using the original deltaTime
+
+            // NEW: Update the time display every frame
+            updateTimeDisplay();
         }
 
     </script>
